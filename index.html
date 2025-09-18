@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visor 3D – model-viewer</title>
+  <script type="module" src="https://esm.sh/@google/model-viewer@^4"></script>
+  <style>
+    :root { --bg:#0f1115; --panel:#1a1f2e; --text:#e8e9ee; --muted:#a5adcb; }
+    *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui}
+    header{padding:12px;background:var(--panel);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    label{font-weight:600}
+    select,input[type="range"],button{background:#0f1320;color:var(--text);border:1px solid #2a2f45;border-radius:8px;padding:6px}
+    model-viewer{width:100%;height:calc(100% - 64px);display:block;--poster-color:#0f1115}
+    #status{position:fixed;left:12px;bottom:12px;font-size:13px;color:var(--muted)}
+    #error{position:fixed;left:12px;bottom:40px;max-width:60ch;background:#2a0f14;color:#ffd2d2;border:1px solid #5c1a22;border-radius:8px;padding:8px;display:none;white-space:pre-wrap}
+    #bar{position:fixed;left:12px;bottom:12px;height:4px;background:#2a2f45;width:240px;border-radius:4px;overflow:hidden}
+    #bar div{height:100%;width:0%}
+  </style>
+</head>
+<body>
+  <header>
+    <label>Archivo:
+      <input id="file" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json">
+    </label>
+    <label>Animación:
+      <select id="anim"><option value="">(—)</option></select>
+    </label>
+    <button id="play">▶︎</button>
+    <button id="pause">⏸</button>
+  </header>
+
+  <!-- OJO: sin src por defecto; cargamos desde el botón -->
+  <model-viewer id="mv"
+    camera-controls
+    autoplay
+    environment-image="neutral"
+    exposure="0.9"
+    shadow-intensity="0.6">
+  </model-viewer>
+
+  <div id="error"></div>
+  <div id="bar"><div></div></div>
+  <div id="status">Listo. Carga un .glb exportado desde Blender.</div>
+
+  <script type="module">
+    const mv = document.getElementById('mv');
+    const fileInput = document.getElementById('file');
+    const animSel = document.getElementById('anim');
+    const playBtn = document.getElementById('play');
+    const pauseBtn = document.getElementById('pause');
+    const statusEl = document.getElementById('status');
+    const errEl = document.getElementById('error');
+    const bar = document.querySelector('#bar div');
+
+    function showError(msg){
+      errEl.textContent = msg ?? 'Error desconocido';
+      errEl.style.display = 'block';
+    }
+    function clearError(){ errEl.style.display = 'none'; errEl.textContent=''; }
+
+    // Progreso de carga
+    mv.addEventListener('progress', (e)=>{
+      const f = e.detail.totalProgress ?? 0;
+      bar.style.width = Math.round(f*100) + '%';
+      statusEl.textContent = 'Cargando: ' + Math.round(f*100) + '%';
+    });
+
+    // Errores del visor
+    mv.addEventListener('error', (e)=>{
+      const detail = e?.detail?.message || mv?.error?.message || String(e?.detail || 'Error al cargar el modelo.');
+      showError(detail);
+      statusEl.textContent = 'Error';
+    });
+
+    // Carga desde archivo local (funciona offline)
+    fileInput.addEventListener('change', (e)=>{
+      clearError();
+      bar.style.width = '0%';
+      statusEl.textContent = 'Preparando archivo…';
+      const file = e.target.files?.[0];
+      if(!file){ statusEl.textContent='Sin archivo'; return; }
+      const isGLB = file.name.toLowerCase().endsWith('.glb');
+      if(!isGLB){
+        showError('Sugerencia: usa .GLB (Binary). Un .GLTF separado puede no cargar desde un solo input.');
+      }
+      const url = URL.createObjectURL(file);
+      mv.src = url;
+    });
+
+    // Poblar animaciones cuando cargue
+    mv.addEventListener('load', ()=>{
+      clearError();
+      statusEl.textContent = 'Modelo cargado.';
+      while (animSel.options.length) animSel.remove(0);
+      const anims = mv.availableAnimations || [];
+      if (!anims.length) {
+        const opt = document.createElement('option');
+        opt.textContent = '(Sin animaciones)';
+        opt.value = '';
+        animSel.appendChild(opt);
+      } else {
+        anims.forEach(name=>{
+          const opt=document.createElement('option');
+          opt.value=name; opt.textContent=name;
+          animSel.appendChild(opt);
+        });
+        mv.animationName = anims[0];
+        mv.play();
+      }
+    });
+
+    animSel.addEventListener('change', ()=>{
+      if (!animSel.value) return;
+      mv.animationName = animSel.value;
+      mv.play();
+    });
+    playBtn.addEventListener('click', ()=> mv.play());
+    pauseBtn.addEventListener('click', ()=> mv.pause());
+  </script>
+</body>
+</html>
